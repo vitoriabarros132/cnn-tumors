@@ -37,7 +37,7 @@ A compilação do modelo utiliza a função de perda `categorical_crossentropy` 
 
 O gráfico abaixo mostra a evolução da acurácia e da perda durante as épocas de treinamento e validação:
 
-![Training and Validation Accuracy and Loss](https://imgur.com/a/PY4abhb)
+![Training and Validation Accuracy and Loss](images/download.png)
 
 Após o treinamento, o modelo foi avaliado no conjunto de teste, apresentando os seguintes resultados:
 
