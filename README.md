@@ -17,7 +17,7 @@ O dataset original foi dividido em conjuntos de treino, validação e teste util
 
 A arquitetura da CNN utilizada consiste em:
 
-*   Camada de Entrada com Data Augmentation e Rescaling para uso opcional.
+*   Camada de Entrada com Data Augmentation para uso opcional e Rescaling.
 *   Múltiplas camadas convolucionais com ativação ReLU, seguidas por camadas de Max Pooling para redução dimensional e camadas de Dropout para regularização.
 *   Uma camada Flatten para converter a saída das camadas convolucionais em um vetor.
 *   Uma camada Dense (Totalmente Conectada) com ativação ReLU e regularização L2.
