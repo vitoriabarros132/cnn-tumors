@@ -25,6 +25,10 @@ A arquitetura da CNN utilizada consiste em:
 
 A compilação do modelo utiliza a função de perda `categorical_crossentropy` e o otimizador Adam com uma taxa de aprendizado ajustável.
 
+Configuração da rede:
+
+![Configuração da rede](images/conf.png)
+
 ## Treinamento
 
 1.  O conjunto de treino original foi dividido em subconjuntos de treino (80%) e validação (20%) usando `train_test_split` da biblioteca scikit-learn, mantendo a proporção das classes.
