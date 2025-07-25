@@ -27,7 +27,7 @@ A compilação do modelo utiliza a função de perda `categorical_crossentropy` 
 
 Configuração da rede:
 
-![Configuração da rede](images/conf.png)
+![Configuração da rede](images/configuracao.png)
 
 ## Treinamento
 
@@ -41,14 +41,18 @@ Configuração da rede:
 
 O gráfico abaixo mostra a evolução da acurácia e da perda durante as épocas de treinamento e validação:
 
-![Training and Validation Accuracy and Loss](images/download.png)
+![Gráfico](images/grafico.png)
+
+Abaixo, a matriz de confusão do modelo treinado:
+
+![Matriz de confusão](images/matriz.png)
 
 Após o treinamento, o modelo foi avaliado no conjunto de teste, apresentando os seguintes resultados:
 
-*   **Loss no teste:** 0.3393
-*   **Acurácia no teste:** 0.9390 (93.9%)
-*   **Precisão no teste:** 0.9418 (94.18%)
-*   **Recall no teste:** 0.9382 (93.82%)
+*   **Loss no teste:** 0.3653
+*   **Acurácia no teste:** 0.9314 (93.14%)
+*   **Precisão no teste:** 0.9383 (93.83%)
+*   **Recall no teste:** 0.9282 (92.82%)
 
 ## Como Usar
 
