@@ -27,7 +27,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 import matplotlib.pyplot as plt  # Para visualizar imagens
 import numpy as np  # Para manipulação de arrays
 import os  # Para trabalhar com diretórios
-from sklearn.model_selection import train_test_split # Importar train_test_split
+from sklearn.model_selection import train_test_split
 
 # Definir o caminho do dataset
 dataset_path = "/kaggle/input/brain-tumor-mri-dataset"
@@ -75,13 +75,12 @@ class_names = test_dataset_raw.class_names
 AUTOTUNE = tf.data.AUTOTUNE
 test_dataset = test_dataset_raw.cache().prefetch(buffer_size=AUTOTUNE)
 
-
-# Data Augmentation
+# Data Augmentation (opcional)
 data_augmentation = keras.Sequential(
     [
         layers.RandomFlip("horizontal"), # Inversão horizontal
         layers.RandomRotation(0.05),       # Rotação para até 5% (0.05 radianos)
-       layers.RandomContrast(0.05),     # Ajuste de contraste (opcional)
+        layers.RandomContrast(0.05),     # Ajuste de contraste (opcional)
     ],
     name="data_augmentation",
 )
@@ -114,6 +113,7 @@ def create_model(num_classes):
     return model
 
 # Função para criar datasets de treino e validação a partir de caminhos e rótulos
+# Para usar o Data Augmentation: augment=True
 def create_tf_dataset_split(image_paths, labels, num_classes, batch_size, shuffle=False, augment=False):
     # Função auxiliar para carregar e pré-processar imagens
     def load_image(image_path, label):
@@ -134,6 +134,7 @@ def create_tf_dataset_split(image_paths, labels, num_classes, batch_size, shuffl
     return dataset
 
 # Criar datasets de treino e validação
+# Para usar o Data Augmentation: augment=True
 train_dataset = create_tf_dataset_split(train_paths, train_labels, num_classes, batch_size=32, shuffle=True, augment=False)
 val_dataset = create_tf_dataset_split(val_paths, val_labels, num_classes, batch_size=32)
 
@@ -164,14 +165,12 @@ model_checkpoint_callback = ModelCheckpoint(
     verbose=1
 )
 
-
 print("Training the model...")
 history = model.fit(
     train_dataset,
     epochs=50, # Número de épocas
-    validation_data=val_dataset, # Usar o conjunto de validação
+    validation_data=val_dataset,
     callbacks=[early_stopping, reduce_lr, model_checkpoint_callback])
-
 
 # Plotagem dos resultados do treinamento
 plt.figure(figsize=(12, 5))
@@ -217,9 +216,8 @@ y_pred = np.argmax(y_pred_probs, axis=1)
 
 # 2. Obter os rótulos verdadeiros do conjunto de teste
 y_true = np.concatenate([y for x, y in test_dataset], axis=0)
-# Como os rótulos estão em one-hot encoding, precisamos convertê-los para um único número
+# Converter os rótulos de one-hot para um único número
 y_true = np.argmax(y_true, axis=1)
-
 
 # 3. Calcular a matriz de confusão
 conf_matrix = confusion_matrix(y_true, y_pred)
@@ -236,6 +234,7 @@ plt.show()
 
 """# DANDO PREDICT NO MODELO"""
 
+# Pegar o nome das classes
 import os
 
 test_dir = "/kaggle/input/brain-tumor-mri-dataset/Testing"
@@ -246,45 +245,34 @@ for class_name in os.listdir(test_dir):
     class_path = os.path.join(test_dir, class_name)
     if os.path.isdir(class_path):
         print(f"- {class_name}/")
-        # Opcional: Listar alguns arquivos dentro de cada subdiretório para referência
-        files_in_class = os.listdir(class_path)
-        print("  Primeiros 5 arquivos:", files_in_class[:5])
 
-# Carregar o modelo treinado (certifique-se de que o caminho está correto)
-# Substitua pelo caminho onde você salvou seu melhor modelo
+# Carregar o modelo treinado
 model_path = '/content/drive/MyDrive/PROJETO IA 2024-2025/modelos_salvos/melhor_modelo_tumores_sem_VC.keras'
 loaded_model = keras.models.load_model(model_path)
 
-# Função para carregar e pré-processar uma nova imagem
+# Carregar e pré-processar uma nova imagem
 def load_and_preprocess_image(image_path, image_size):
     img = tf.io.read_file(image_path)
-    img = tf.image.decode_jpeg(img, channels=3) # Decodificar JPEG (ajuste se for outro formato)
-    img = tf.image.resize(img, image_size)      # Redimensionar para o tamanho esperado pelo modelo
-    img = tf.expand_dims(img, axis=0)           # Adicionar dimensão de batch (o modelo espera um batch de imagens)
-    # Não aplicar rescaling ou data augmentation aqui, pois são para treino/validação.
-    # A camada de Rescaling 1./255 já está no modelo.
+    img = tf.image.decode_jpeg(img, channels=3) # Decodificar JPEG (se for outro formato, só mudar)
+    img = tf.image.resize(img, image_size)
+    img = tf.expand_dims(img, axis=0)
     return img
 
-# Caminho para a nova imagem que você quer prever
-# Substitua por um caminho de imagem real
-new_image_path = '/content/drive/MyDrive/PROJETO IA 2024-2025/Testes/glioma/G_108.jpg' # Exemplo de caminho de teste
+# Caminho para a imagem que quer prever
+new_image_path = '/content/drive/MyDrive/PROJETO IA 2024-2025/Testes/glioma/G_108.jpg'
 
 # Definir o tamanho da imagem (deve ser o mesmo tamanho usado no treinamento)
-IMAGE_SIZE_PREDICT = (64, 64) # Use o tamanho definido no treinamento
+IMAGE_SIZE_PREDICT = (64, 64)
 
 # Carregar e pré-processar a nova imagem
 new_image = load_and_preprocess_image(new_image_path, IMAGE_SIZE_PREDICT)
 
 # Fazer a previsão
 predictions = loaded_model.predict(new_image)
-
-# As previsões são probabilidades para cada classe.
-# Para obter a classe prevista, pegamos o índice com a maior probabilidade.
 predicted_class_index = np.argmax(predictions)
 
 # Mapear o índice previsto de volta para o nome da classe
-# Certifique-se de que 'class_names' esteja disponível ou defina-o aqui se necessário
-class_names = sorted(os.listdir("/kaggle/input/brain-tumor-mri-dataset/Training")) # Defina class_names se não estiver no escopo
+class_names = sorted(os.listdir("/kaggle/input/brain-tumor-mri-dataset/Training"))
 predicted_class_name = class_names[predicted_class_index]
 
 print(f"A imagem é prevista como: {predicted_class_name}")
