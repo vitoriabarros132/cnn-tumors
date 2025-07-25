@@ -23,7 +23,7 @@ from tensorflow import keras
 from keras import callbacks
 from keras import layers
 from keras import regularizers
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 import matplotlib.pyplot as plt  # Para visualizar imagens
 import numpy as np  # Para manipulação de arrays
 import os  # Para trabalhar com diretórios
@@ -35,16 +35,16 @@ train_dir = os.path.join(dataset_path, "Training")
 test_dir = os.path.join(dataset_path, "Testing")
 
 # Definir o novo tamanho da imagem
-IMAGE_SIZE = (32, 32)
+IMAGE_SIZE = (64, 64)
 
 # Coletar caminhos de imagem e rótulos do conjunto de treinamento
 image_paths = []
 labels = []
-class_names = sorted(os.listdir(train_dir))
-num_classes = len(class_names)
-class_to_label = {name: i for i, name in enumerate(class_names)}
+class_names_list = sorted(os.listdir(train_dir))
+num_classes = len(class_names_list)
+class_to_label = {name: i for i, name in enumerate(class_names_list)}
 
-for class_name in class_names:
+for class_name in class_names_list:
     class_dir = os.path.join(train_dir, class_name)
     for img_name in os.listdir(class_dir):
         image_paths.append(os.path.join(class_dir, img_name))
@@ -61,27 +61,27 @@ train_paths, val_paths, train_labels, val_labels = train_test_split(
 )
 
 # Carregar o conjunto de teste separadamente
-test_dataset = keras.preprocessing.image_dataset_from_directory(
+test_dataset_raw = keras.preprocessing.image_dataset_from_directory(
     test_dir,
     image_size=IMAGE_SIZE,
     batch_size=32, # Ajustar o tamanho do batch
     shuffle=False,
     label_mode='categorical') # São mais de 2 classes, então é categorical
 
+# Pegar os nomes das classes ANTES de otimizar o dataset
+class_names = test_dataset_raw.class_names
+
 # Otimização de desempenho para o conjunto de teste
 AUTOTUNE = tf.data.AUTOTUNE
-test_dataset = test_dataset.cache().prefetch(buffer_size=AUTOTUNE)
+test_dataset = test_dataset_raw.cache().prefetch(buffer_size=AUTOTUNE)
 
 
-# Data Augmentation - Define outside the model
+# Data Augmentation
 data_augmentation = keras.Sequential(
     [
         layers.RandomFlip("horizontal"), # Inversão horizontal
-        layers.RandomRotation(0.05),       # Reduzindo a rotação para até 5% (0.05 radianos)
-        # Removendo RandomZoom e RandomTranslation para simplificar
-        # layers.RandomZoom(0.1),         # Zoom de até 10%
-        # layers.RandomTranslation(height_factor=0.1, width_factor=0.1), # Deslocamento
-       layers.RandomContrast(0.05),     # Reduzindo o ajuste de contraste (opcional)
+        layers.RandomRotation(0.05),       # Rotação para até 5% (0.05 radianos)
+       layers.RandomContrast(0.05),     # Ajuste de contraste (opcional)
     ],
     name="data_augmentation",
 )
@@ -90,25 +90,27 @@ data_augmentation = keras.Sequential(
 def create_model(num_classes):
     model = keras.Sequential([
         keras.Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)),
-        layers.Rescaling(1./255), # Apply rescaling after input
-        layers.Conv2D(16, (3,3), activation='relu'), # Reduzindo filtros
-        layers.MaxPooling2D(pool_size=(2,2), strides=2), # Aumentando stride
-        layers.Dropout(0.2), # Reduzindo dropout
-        layers.Conv2D(32, (3,3), activation='relu'), # Reduzindo filtros
-        layers.MaxPooling2D(pool_size=(2,2), strides=2), # Aumentando stride
-        layers.Dropout(0.1), # Reduzindo dropout
-        layers.Conv2D(64, (3,3), activation='relu'), # Reduzindo filtros
-        layers.MaxPooling2D(pool_size=(2,2), strides=2), # Aumentando stride
-        layers.Dropout(0.2), # Reduzindo dropout
+        layers.Rescaling(1./255),
+        layers.Conv2D(16, (3,3), activation='relu'),
+        layers.MaxPooling2D(pool_size=(2,2), strides=2),
+        layers.Dropout(0.3),
+        layers.Conv2D(32, (3,3), activation='relu'),
+        layers.MaxPooling2D(pool_size=(2,2), strides=2),
+        layers.Dropout(0.2),
+        layers.Conv2D(64, (3,3), activation='relu'),
+        layers.MaxPooling2D(pool_size=(2,2), strides=2),
+        layers.Dropout(0.3),
         layers.Flatten(),
-        layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001)), # Reduzindo neurônios e regularização
-        layers.Dropout(0.2), # Reduzindo dropout
+        layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.005)),
+        layers.Dropout(0.3),
         layers.Dense(num_classes, activation='softmax')
     ])
     model.compile(
         loss="categorical_crossentropy",
         optimizer=keras.optimizers.Adam(learning_rate=0.001),
-        metrics=["accuracy"])
+        metrics=["accuracy",
+                 tf.keras.metrics.Precision(name='precision'),
+                 tf.keras.metrics.Recall(name='recall')])
     return model
 
 # Função para criar datasets de treino e validação a partir de caminhos e rótulos
@@ -117,7 +119,7 @@ def create_tf_dataset_split(image_paths, labels, num_classes, batch_size, shuffl
     def load_image(image_path, label):
         img = tf.io.read_file(image_path)
         img = tf.image.decode_jpeg(img, channels=3)
-        img = tf.image.resize(img, IMAGE_SIZE) # Usar o novo tamanho da imagem
+        img = tf.image.resize(img, IMAGE_SIZE)
         label = tf.one_hot(label, num_classes)
         return img, label
 
@@ -132,7 +134,7 @@ def create_tf_dataset_split(image_paths, labels, num_classes, batch_size, shuffl
     return dataset
 
 # Criar datasets de treino e validação
-train_dataset = create_tf_dataset_split(train_paths, train_labels, num_classes, batch_size=32, shuffle=True, augment=True)
+train_dataset = create_tf_dataset_split(train_paths, train_labels, num_classes, batch_size=32, shuffle=True, augment=False)
 val_dataset = create_tf_dataset_split(val_paths, val_labels, num_classes, batch_size=32)
 
 
@@ -142,7 +144,7 @@ model = create_model(num_classes)
 # Early Stopping e Learning Rate para o treinamento
 early_stopping = callbacks.EarlyStopping(
     monitor='val_loss',
-    patience=10,
+    patience=5,
     restore_best_weights=True
 )
 
@@ -166,7 +168,7 @@ model_checkpoint_callback = ModelCheckpoint(
 print("Training the model...")
 history = model.fit(
     train_dataset,
-    epochs=30, # Número de épocas
+    epochs=50, # Número de épocas
     validation_data=val_dataset, # Usar o conjunto de validação
     callbacks=[early_stopping, reduce_lr, model_checkpoint_callback])
 
@@ -198,11 +200,55 @@ plt.show()
 
 # Avaliação do modelo final no conjunto de teste
 print("\nAvaliação do modelo final no conjunto de teste:")
-loss, accuracy = model.evaluate(test_dataset)
+loss, accuracy, precision, recall = model.evaluate(test_dataset)
 print(f"Loss no teste: {loss:.4f}")
 print(f"Acurácia no teste: {accuracy:.4f}")
+print(f"Precisão no teste: {precision:.4f}")
+print(f"Recall no teste: {recall:.4f}")
+
+# Geração da Matriz de Confusão
+import numpy as np
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+
+# 1. Fazer previsões no conjunto de teste
+y_pred_probs = model.predict(test_dataset)
+y_pred = np.argmax(y_pred_probs, axis=1)
+
+# 2. Obter os rótulos verdadeiros do conjunto de teste
+y_true = np.concatenate([y for x, y in test_dataset], axis=0)
+# Como os rótulos estão em one-hot encoding, precisamos convertê-los para um único número
+y_true = np.argmax(y_true, axis=1)
+
+
+# 3. Calcular a matriz de confusão
+conf_matrix = confusion_matrix(y_true, y_pred)
+
+# 4. Plotar a matriz de confusão usando Seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
+            xticklabels=class_names, yticklabels=class_names)
+
+plt.title('Matriz de Confusão')
+plt.ylabel('Classe Verdadeira')
+plt.xlabel('Classe Prevista')
+plt.show()
 
 """# DANDO PREDICT NO MODELO"""
+
+import os
+
+test_dir = "/kaggle/input/brain-tumor-mri-dataset/Testing"
+
+# Listar os diretórios dentro do diretório de teste
+print("Diretórios dentro de:", test_dir)
+for class_name in os.listdir(test_dir):
+    class_path = os.path.join(test_dir, class_name)
+    if os.path.isdir(class_path):
+        print(f"- {class_name}/")
+        # Opcional: Listar alguns arquivos dentro de cada subdiretório para referência
+        files_in_class = os.listdir(class_path)
+        print("  Primeiros 5 arquivos:", files_in_class[:5])
 
 # Carregar o modelo treinado (certifique-se de que o caminho está correto)
 # Substitua pelo caminho onde você salvou seu melhor modelo
@@ -221,10 +267,10 @@ def load_and_preprocess_image(image_path, image_size):
 
 # Caminho para a nova imagem que você quer prever
 # Substitua por um caminho de imagem real
-new_image_path = '/kaggle/input/brain-tumor-mri-dataset/Testing/pituitary/Te-pi_0011.jpg' # Exemplo de caminho de teste
+new_image_path = '/content/drive/MyDrive/PROJETO IA 2024-2025/Testes/glioma/G_108.jpg' # Exemplo de caminho de teste
 
 # Definir o tamanho da imagem (deve ser o mesmo tamanho usado no treinamento)
-IMAGE_SIZE_PREDICT = (32, 32) # Use o tamanho definido no treinamento
+IMAGE_SIZE_PREDICT = (64, 64) # Use o tamanho definido no treinamento
 
 # Carregar e pré-processar a nova imagem
 new_image = load_and_preprocess_image(new_image_path, IMAGE_SIZE_PREDICT)
@@ -238,30 +284,26 @@ predicted_class_index = np.argmax(predictions)
 
 # Mapear o índice previsto de volta para o nome da classe
 # Certifique-se de que 'class_names' esteja disponível ou defina-o aqui se necessário
-# class_names = sorted(os.listdir("/kaggle/input/brain-tumor-mri-dataset/Training")) # Defina class_names se não estiver no escopo
+class_names = sorted(os.listdir("/kaggle/input/brain-tumor-mri-dataset/Training")) # Defina class_names se não estiver no escopo
 predicted_class_name = class_names[predicted_class_index]
 
 print(f"A imagem é prevista como: {predicted_class_name}")
-print(f"Probabilidades por classe: {predictions}")
+
+# Plotar as previsões em um gráfico de barras
+plt.figure(figsize=(8, 5))
+plt.bar(class_names, predictions[0])
+plt.xlabel("Classes")
+plt.ylabel("Probabilidade")
+plt.title("Probabilidade de Previsão por Classe")
+plt.ylim(0, 1) # Definir o limite do eixo y entre 0 e 1
+plt.show()
 
 """**Como usar:**
 
 1.  **Atualize os caminhos:** Substitua o valor de `model_path` pelo caminho real do seu modelo salvo no Google Drive. Substitua o valor de `new_image_path` pelo caminho da imagem que você deseja prever.
-2.  **Verifique `IMAGE_SIZE_PREDICT`:** Certifique-se de que `IMAGE_SIZE_PREDICT` é o mesmo tamanho de imagem (`(32, 32)`) que você usou durante o treinamento do modelo.
+2.  **Verifique `IMAGE_SIZE_PREDICT`:** Certifique-se de que `IMAGE_SIZE_PREDICT` é o mesmo tamanho de imagem que você usou durante o treinamento do modelo.
 3.  **Verifique `class_names`:** Se a variável `class_names` não estiver definida globalmente, descomente e execute a linha que a define a partir do diretório "Training" para que o código possa mapear o índice previsto para o nome da classe.
 4.  **Execute a célula:** Execute a célula de código para obter a previsão.
 """
 
-import os
-
-test_dir = "/kaggle/input/brain-tumor-mri-dataset/Testing"
-
-# Listar os diretórios dentro do diretório de teste
-print("Diretórios dentro de:", test_dir)
-for class_name in os.listdir(test_dir):
-    class_path = os.path.join(test_dir, class_name)
-    if os.path.isdir(class_path):
-        print(f"- {class_name}/")
-        # Opcional: Listar alguns arquivos dentro de cada subdiretório para referência
-        files_in_class = os.listdir(class_path)
-        print("  Primeiros 5 arquivos:", files_in_class[:5])
+model.summary()
